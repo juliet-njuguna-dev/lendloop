@@ -1,0 +1,161 @@
+{
+  "name": "LendLoop - Request notification",
+  "nodes": [
+    {
+      "id": "a1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lendloop-request",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "lendloop-request-hook"
+    },
+    {
+      "id": "a2",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// Verify the HMAC signature Convex put on the request. Signed string:\n// `${timestamp}.POST.${path}.${body}` (same format as convex/hmac.ts).\nconst crypto = require('crypto');\nconst secret = $env.LENDLOOP_WEBHOOK_SECRET;\nconst { headers, body } = $input.first().json;\nconst ts = headers['x-timestamp'] || '';\nconst sig = headers['x-signature'] || '';\nconst expected = crypto.createHmac('sha256', secret)\n  .update(`${ts}.POST./webhook/lendloop-request.${JSON.stringify(body)}`).digest('hex');\nconst fresh = Math.abs(Date.now() - Number(ts)) < 5 * 60 * 1000;   // replay window\nlet valid = false;\nif (secret && sig && fresh && sig.length === expected.length) {\n  valid = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));\n}\nreturn [{ json: { valid, payload: valid ? body : null } }];"
+      }
+    },
+    {
+      "id": "a3",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a4",
+      "name": "Build notification (logged mock)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Uses ONLY the fields it needs. A logged mock notification is the delivery channel.\nconst p = $input.first().json.payload;\nconst text = {\n  request_created: `New borrow request for your \"${p.toolName}\" (${p.startDate} to ${p.endDate}).`,\n  request_approved: `Your request for \"${p.toolName}\" was approved (${p.startDate} to ${p.endDate}).`,\n  request_declined: `Your request for \"${p.toolName}\" was declined.`,\n  loan_returned: `\"${p.toolName}\" has been marked as returned. Thank you!`,\n}[p.event] || `Update on \"${p.toolName}\": ${p.status}`;\nconsole.log(`[MOCK NOTIFICATION] to=${p.recipientName} <${p.recipientEmail}> :: ${text}`);\nreturn [{ json: { to: p.recipientEmail, message: text, loanId: p.loanId, event: p.event } }];"
+      }
+    },
+    {
+      "id": "a5",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ ({ ok: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "a6",
+      "name": "Respond 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ ({ error: 'unauthorized' }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Build notification (logged mock)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build notification (logged mock)": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Nairobi"
+  },
+  "pinData": {}
+}

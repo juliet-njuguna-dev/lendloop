@@ -1,0 +1,48 @@
+{
+  "name": "LendLoop - Error workflow",
+  "nodes": [
+    {
+      "id": "c1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c2",
+      "name": "Log failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nconsole.error(`[LENDLOOP AUTOMATION FAILED] workflow=${e.workflow?.name} node=${e.execution?.lastNodeExecuted} error=${e.execution?.error?.message}`);\nreturn [{ json: { alert: 'automation failed', workflow: e.workflow?.name, error: e.execution?.error?.message } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Nairobi"
+  },
+  "pinData": {}
+}
